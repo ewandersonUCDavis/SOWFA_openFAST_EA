@@ -57,6 +57,8 @@ SUBROUTINE PitchCntrl ( BlPitch, ElecPwr, HSS_Spd, GBRatio, TwrAccel, NumBl, ZTi
    ! outlined in Eric's dissertaion. Derating is achieved by using subroutine ControlParameters() to scale
    ! relevant control parameters.
 USE								precision
+USE								EAControl 	! contains variables: TimeDRStart, TimeDREnd, DerateFactor, TEmShutdown, maxOverspeed, EmergencyShutdown, GenSpeedF, PC_RefSpd, PC_MinPit, VS_Rgn2_K, and VS_RtPwr. See EAControl module in FAST_Mods.f90 for variable descriptions.
+
 
 IMPLICIT                        NONE
 
@@ -79,7 +81,6 @@ CHARACTER(1024), INTENT(IN ) :: DirRoot                                         
  ! Local Variables:
 
 REAL(ReKi)                      :: ElapTime                                        ! Elapsed time since the last call to the controller, sec.
-REAL(ReKi)	                	 :: GenSpeedF                                       ! Filtered HSS (generator) speed, rad/s.
 REAL(ReKi)                      :: GK                                              ! Current value of the gain correction factor, used in the gain scheduling law of the pitch controller, (-).
 REAL(ReKi), SAVE                :: IntSpdErr                                       ! Current integral of speed error w.r.t. time, rad.
 REAL(ReKi), SAVE                :: LastTimePC                                      ! Last time the pitch  controller was called, sec.
@@ -90,9 +91,7 @@ REAL(ReKi), PARAMETER           :: PC_KK         =       0.1099965              
 REAL(ReKi), PARAMETER           :: PC_KP         =       0.01882681                ! Proportional gain for pitch controller at rated pitch (zero), sec.
 REAL(ReKi), PARAMETER           :: PC_MaxPit     =       1.570796                  ! Maximum pitch setting in pitch controller, rad.
 REAL(ReKi), PARAMETER           :: PC_MaxRat     =       0.1396263                 ! Maximum pitch  rate (in absolute value) in pitch  controller, rad/s.
-REAL(ReKi), SAVE           	 :: PC_MinPit                            			! Minimum pitch setting in pitch controller, rad.
 REAL(ReKi), SAVE                :: PitCom    (3)                                   ! Commanded pitch of each blade the last time the controller was called, rad.
-REAL(ReKi)           			 :: PC_RefSpd                         				! Desired (reference) HSS speed for pitch controller, rad/s.
 REAL(ReKi)                      :: PitComI                                         ! Integral term of command pitch, rad.
 REAL(ReKi)                      :: PitComP                                         ! Proportional term of command pitch, rad.
 REAL(ReKi)                      :: PitComT                                         ! Total command pitch based on the sum of the proportional and integral terms, rad.
@@ -100,8 +99,6 @@ REAL(ReKi)                      :: PitRate   (3)                                
 REAL(ReKi)                      :: SpdErr                                          ! Current speed error, rad/s.
 LOGICAL                   	 :: Initialize        = .TRUE.                                 ! A status flag set by the simulation as follows: 0 if this is the first call, 1 for all subsequent time steps, -1 if this is the final call at the end of the simulation.
 INTEGER(ReKi)                   :: K                                               ! Loops through blades.
-REAL(ReKi)                      :: VS_Rgn2K 										! Not used in this subroutine, but must be declared because it's an output of subroutine getControlParameters().  
-REAL(ReKi)                      :: VS_RtPwr										! Not used in this subroutine, but must be declared because it's an output of subroutine getControlParameters().
 
 !=======================================================================
    !Initialize variables:
@@ -131,34 +128,35 @@ ElapTime = ZTime - LastTimePC
    !       numerical precision errors.
 
 IF ( ( ZTime*OnePlusEps - LastTimePC ) >= PC_DT )  THEN
-		
-	CALL getControlParameters( HSS_Spd, ZTime, GenSpeedF, PC_RefSpd, PC_MinPit, VS_Rgn2K, VS_RtPwr )
 
-   ! Compute the gain scheduling correction factor based on the previously
-   !   commanded pitch angle for blade 1:
-      GK = 1.0/( 1.0 + PitCom(1)/PC_KK )
+	CALL updateControlParameters( HSS_Spd, ZTime )
+	
+	IF ( EmergencyShutdown ) THEN
+		PitComT = 3.1415926535/2
+	ELSE
+	   ! Compute the gain scheduling correction factor based on the previously
+	   !   commanded pitch angle for blade 1:
+		  GK = 1.0/( 1.0 + PitCom(1)/PC_KK )
 
-
-   ! Compute the current speed error and its integral w.r.t. time; 
-      SpdErr    = GenSpeedF - PC_RefSpd                                 ! Current speed error
-      IntSpdErr = IntSpdErr + SpdErr*ElapTime                           ! Current integral of speed error w.r.t. time
+	   ! Compute the current speed error and its integral w.r.t. time; 
+		  SpdErr    = GenSpeedF - PC_RefSpd                                 ! Current speed error
+		  IntSpdErr = IntSpdErr + SpdErr*ElapTime                           ! Current integral of speed error w.r.t. time
 	  
-	! saturate the integral term using the pitch angle limits:
-      IntSpdErr = MIN( MAX( IntSpdErr, PC_MinPit/( GK*PC_KI ) ), &
-                                       PC_MaxPit/( GK*PC_KI )      )    ! Saturate the integral term using the pitch angle limits, converted to integral speed error limits
+		! saturate the integral term using the pitch angle limits:
+		  IntSpdErr = MIN( MAX( IntSpdErr, PC_MinPit/( GK*PC_KI ) ) , PC_MaxPit/( GK*PC_KI ))    ! Saturate the integral term using the pitch angle limits, converted to integral speed error limits
+
+		! Compute the pitch commands associated with the proportional and integral gains: 
+		  PitComP   = GK*PC_KP*   SpdErr                                    ! Proportional term
+		  PitComI   = GK*PC_KI*IntSpdErr                                    ! Integral term (saturated)
 
 
-	! Compute the pitch commands associated with the proportional and integral gains: 
-      PitComP   = GK*PC_KP*   SpdErr                                    ! Proportional term
-      PitComI   = GK*PC_KI*IntSpdErr                                    ! Integral term (saturated)
-
-
-	! Superimpose the individual commands to get the total pitch command;
-      PitComT   = PitComP + PitComI                                     ! Overall command (unsaturated)
+		! Superimpose the individual commands to get the total pitch command;
+		  PitComT   = PitComP + PitComI                                     ! Overall command (unsaturated)
 	  
 	  
-	!   saturate the overall command using the pitch angle limits:
-      PitComT   = MIN( MAX( PitComT, PC_MinPit ), PC_MaxPit )           ! Saturate the overall command using the pitch angle limits
+		!   saturate the overall command using the pitch angle limits:
+		  PitComT   = MIN( MAX( PitComT, PC_MinPit ), PC_MaxPit )           ! Saturate the overall command using the pitch angle limits
+	ENDIF
 
 
    ! Saturate the overall commanded pitch using the pitch rate limit:
@@ -227,7 +225,7 @@ REAL(ReKi), INTENT(IN )      :: ZTime                                           
 
 CHARACTER(1024), INTENT(IN ) :: DirRoot                                         ! The name of the root file including the full path to the current working directory.  This may be useful if you want this routine to write a permanent record of what it does to be stored with the simulation results: the results should be stored in a file whose name (including path) is generated by appending any suitable extension to DirRoot.
 !
-! CALL ProgAbort ( ' Error: There User defined Generator [ subroutine UserGen() in UserSubs.f90]. Please select a different option for GenModel' )
+CALL ProgAbort ( ' Error: There User defined Generator [ subroutine UserGen() in UserSubs.f90]. Please select a different option for GenModel' )
 !
 GenTrq  = 0.0 + DelGenTrq  ! Make sure to add the pertubation on generator torque, DelGenTrq.  This is used only for FAST linearization (it is zero otherwise).
 !
@@ -248,7 +246,13 @@ END SUBROUTINE UserGen
 !=======================================================================
 SUBROUTINE UserHSSBr ( GenTrq, ElecPwr, HSS_Spd, GBRatio, NumBl, ZTime, DT, DirRoot, HSSBrFrac )
 
-
+	! wrote a very simple High speed brake torque control routine. If the high speed shaft 
+	! comes to a complete stop the high speed shaft brake will be engaged at full torque. 
+	! Otherwise the brake will not be used. The intention is to keep the rotor stationary 
+	! after an emergency shutdown, but not use the brake durring the emergency shutdown or 
+	! in normal operation. (Eric Anderson)
+	
+	
    ! This is a dummy routine for holding the place of a user-specified
    ! HSS brake model.  This routine must specify the fraction
    ! (HSSBrFrac) of full torque to be applied to the HSS by the HSS
@@ -270,6 +274,8 @@ SUBROUTINE UserHSSBr ( GenTrq, ElecPwr, HSS_Spd, GBRatio, NumBl, ZTime, DT, DirR
 
 
 USE                             Precision
+USE								EAControl 	! contains LOGICAL variable EmergencyShutdown.
+! USE								DriveTrain
 
 
 IMPLICIT                        NONE
@@ -289,10 +295,25 @@ REAL(ReKi), INTENT(IN )      :: ZTime                                           
 
 CHARACTER(1024), INTENT(IN ) :: DirRoot                                         ! The name of the root file including the full path to the current working directory.  This may be useful if you want this routine to write a permanent record of what it does to be stored with the simulation results: the results should be stored in a file whose name (including path) is generated by appending any suitable extension to DirRoot.
 
+REAL(ReKi), SAVE			:: brakeStartTime									! Time when HHS Brake is initiated.
+LOGICAL, SAVE				:: brakeOff = .TRUE.
+REAL(ReKi), PARAMETER		:: HSSBrDT = 0.6									! Time it takes for HSS brake to reach full deployment once deployed.
+	
+IF  ( ( EmergencyShutdown ) .AND. ( GenSpeedF < 1 ) ) THEN ! If emergency shutdown has been initiated and generator speed is almost zero.
 
-
-HSSBrFrac = 0.0   ! NOTE: This must be specified as a real number between 0.0 (off - no brake torque) and 1.0 (full - max brake torque = HSSBrTqF); FAST/ADAMS will Abort otherwise.
-
+	IF ( brakeOff ) THEN
+		brakeStartTime = ZTime
+		brakeOff = .FALSE.
+		WRITE(*,*)  'HSS Brake initiated at T =',ZTime,' GenSpeedF =',GenSpeedF
+		HSSBrFrac = 0.0 
+	ELSEIF ( (ZTime-brakeStartTime) < HSSBrDT ) THEN
+		HSSBrFrac = (ZTime-brakeStartTime)/HSSBrDT
+	ELSE
+		HSSBrFrac = 1.0 !Engage brake
+	ENDIF
+ELSE
+	HSSBrFrac = 0.0   
+ENDIF
 
 
 RETURN
@@ -630,7 +651,9 @@ SUBROUTINE UserVSCont ( HSS_Spd, GBRatio, NumBl, ZTime, DT, GenEff, DelGenTrq, D
    ! logic required to run linearizations.
 
 USE								precision
-USE  Output
+USE  							Output
+USE								EAControl 	! contains variables: TimeDRStart, TimeDREnd, DerateFactor, TEmShutdown, maxOverspeed, EmergencyShutdown, GenSpeedF, PC_RefSpd, PC_MinPit, VS_Rgn2_K, and VS_RtPwr. See EAControl module in FAST_Mods.f90 for variable descriptions.
+
 IMPLICIT                        NONE
 
    ! Passed Variables:
@@ -648,7 +671,6 @@ CHARACTER(1024), INTENT(IN ) :: DirRoot                                         
 
 ! Local Variables:
 REAL(ReKi)                      :: ElapTime                                        ! Elapsed time since the last call to the controller, sec.
-REAL(ReKi)                		 :: GenSpeedF                                       ! Filtered HSS (generator) speed, rad/s.
 REAL(ReKi), SAVE                :: LastGenTrq                                      ! Commanded electrical generator torque the last time the controller was called, N-m.
 REAL(ReKi), SAVE                :: LastTimeVS                                  	! Last time the torque controller was called, sec.
 REAL(ReKi), PARAMETER           :: OnePlusEps    = 1.0 + EPSILON(OnePlusEps)       ! The number slighty greater than unity in single precision.
@@ -658,20 +680,15 @@ REAL(ReKi), PARAMETER           :: VS_CtInSp     =      70.16224                
 REAL(ReKi), PARAMETER           :: VS_DT         = 0.00125  !JASON:THIS CHANGED FOR ITI BARGE:      0.0001                    ! Communication interval for torque controller, sec.
 REAL(ReKi), PARAMETER           :: VS_MaxRat     =   15000.0                       ! Maximum torque rate (in absolute value) in torque controller, N-m/s.
 REAL(ReKi), PARAMETER           :: VS_MaxTq      =   47402.91                      ! Maximum generator torque in Region 3 (HSS side), N-m. -- chosen to be 10% above VS_RtTq = 43.09355kNm
-REAL(ReKi)           			 :: VS_Rgn2K                               			! Generator torque constant in Region 2 (HSS side), N-m/(rad/s)^2.
 REAL(ReKi), PARAMETER           :: VS_Rgn2Sp     =      91.21091                   ! Transitional generator speed (HSS side) between regions 1 1/2 and 2, rad/s.
 REAL(ReKi)           			 :: VS_RtGnSp                         				! Rated generator speed (HSS side), rad/s. -- cequal to 99% of PC_RefSpd
-REAL(ReKi)           			 :: VS_RtPwr                            			! Rated generator generator power in Region 3, Watts. -- chosen to be 5MW divided by the electrical generator efficiency of 94.ReKi%
 REAL(ReKi)                		 :: VS_Slope15                                      ! Torque/speed slope of region 1 1/2 cut-in torque ramp , N-m/(rad/s).
 REAL(ReKi)                		 :: VS_Slope25                                      ! Torque/speed slope of region 2 1/2 induction generator, N-m/(rad/s).
 REAL(ReKi), PARAMETER           :: VS_SlPc       =      10.0                       ! Rated generator slip percentage in Region 2 1/2, %.
 REAL(ReKi)                		 :: VS_SySp                                         ! Synchronous speed of region 2 1/2 induction generator, rad/s.
 REAL(ReKi)                		 :: VS_TrGnSp                                       ! Transitional generator speed (HSS side) between regions 2 and 2 1/2, rad/s.
-REAL(ReKi)                		 :: PC_RefSpd 										! Desired (reference) HSS speed for pitch controller, rad/s.
-REAL(ReKi)                		 :: PC_MinPit										! Minimum pitch setting in pitch controller, rad.
 REAL(ReKi)    					 :: BlPitchCom                  					! Commanded blade pitch angle for blade 1 (demand pitch angle), rad.
 ! REAL(ReKi), PARAMETER           :: R2D           =      57.295780                  ! Factor to convert radians to degrees.
-REAL(ReKi), PARAMETER           :: R2D           =      57.295780                  ! Factor to convert radians to degrees.
 
 LOGICAL, SAVE					:: Initialize1 = .TRUE.					!Flag used to initialize some saved variables on the first call to this subroutine
 LOGICAL, SAVE					:: Initialize2 = .TRUE.					!Flag used to initialize some saved variables on the first call to this subroutine
@@ -702,37 +719,42 @@ LOGICAL, SAVE					:: Initialize2 = .TRUE.					!Flag used to initialize some save
 IF ( ( ZTime*OnePlusEps - LastTimeVS ) >= VS_DT )  THEN
 
 	! Get up to date control parameters
-	CALL getControlParameters( HSS_Spd, ZTime, GenSpeedF, PC_RefSpd, PC_MinPit, VS_Rgn2K, VS_RtPwr )
+	CALL updateControlParameters( HSS_Spd, ZTime )
+	
+	IF ( EmergencyShutdown ) THEN
+		GenTrq = 0
+	ELSE
 
-   ! Determine some torque control parameters not specified directly:
-    VS_RtGnSp = 0.99*PC_RefSpd
-	VS_SySp    = VS_RtGnSp/( 1.0 +  0.01*VS_SlPc )
-	VS_Slope15 = ( VS_Rgn2K*VS_Rgn2Sp*VS_Rgn2Sp )/( VS_Rgn2Sp - VS_CtInSp )
-	VS_Slope25 = ( VS_RtPwr/VS_RtGnSp           )/( VS_RtGnSp - VS_SySp   )
-	VS_TrGnSp = ( VS_Slope25 - SQRT( VS_Slope25*( VS_Slope25 - 4.0*VS_Rgn2K*VS_SySp ) ) )/( 2.0*VS_Rgn2K ) !Transition speed from region 2 to region 2.5
+	   ! Determine some torque control parameters not specified directly:
+		VS_RtGnSp = 0.99*PC_RefSpd
+		VS_SySp    = VS_RtGnSp/( 1.0 +  0.01*VS_SlPc )
+		VS_Slope15 = ( VS_Rgn2_K*VS_Rgn2Sp*VS_Rgn2Sp )/( VS_Rgn2Sp - VS_CtInSp )
+		VS_Slope25 = ( VS_RtPwr/VS_RtGnSp           )/( VS_RtGnSp - VS_SySp   )
+		VS_TrGnSp = ( VS_Slope25 - SQRT( VS_Slope25*( VS_Slope25 - 4.0*VS_Rgn2_K*VS_SySp ) ) )/( 2.0*VS_Rgn2_K ) !Transition speed from region 2 to region 2.5
 
-	BlPitchCom =  AllOuts(PtchPMzc1)/R2D
-   ! Compute the generator torque, which depends on which region we are in:
+		BlPitchCom =  AllOuts(PtchPMzc1)/R2D
+	   ! Compute the generator torque, which depends on which region we are in:
 
-      IF ( (   GenSpeedF >= VS_RtGnSp ) .OR. (  BlPitchCom >= (VS_Rgn3MP + PC_MinPit ) ) ) THEN ! We are in region 3 - power is constant
-         GenTrq = VS_RtPwr/GenSpeedF
-      ELSEIF ( GenSpeedF <= VS_CtInSp )  THEN                                    ! We are in region 1 - torque is zero
-         GenTrq = 0.0
-      ELSEIF ( GenSpeedF <  VS_Rgn2Sp )  THEN                                    ! We are in region 1 1/2 - linear ramp in torque from zero to optimal
-         GenTrq = VS_Slope15*( GenSpeedF - VS_CtInSp )
-      ELSEIF ( GenSpeedF <  VS_TrGnSp )  THEN                                    ! We are in region 2 - optimal torque is proportional to the square of the generator speed
-         GenTrq = VS_Rgn2K*GenSpeedF*GenSpeedF
-      ELSE                                                                       ! We are in region 2 1/2 - simple induction generator transition region
-         GenTrq = VS_Slope25*( GenSpeedF - VS_SySp   )
-      ENDIF
+		  IF ( (   GenSpeedF >= VS_RtGnSp ) .OR. (  BlPitchCom >= (VS_Rgn3MP + PC_MinPit ) ) ) THEN ! We are in region 3 - power is constant
+			 GenTrq = VS_RtPwr/GenSpeedF
+		  ELSEIF ( GenSpeedF <= VS_CtInSp )  THEN                                    ! We are in region 1 - torque is zero
+			 GenTrq = 0.0
+		  ELSEIF ( GenSpeedF <  VS_Rgn2Sp )  THEN                                    ! We are in region 1 1/2 - linear ramp in torque from zero to optimal
+			 GenTrq = VS_Slope15*( GenSpeedF - VS_CtInSp )
+		  ELSEIF ( GenSpeedF <  VS_TrGnSp )  THEN                                    ! We are in region 2 - optimal torque is proportional to the square of the generator speed
+			 GenTrq = VS_Rgn2_K*GenSpeedF*GenSpeedF
+		  ELSE                                                                       ! We are in region 2 1/2 - simple induction generator transition region
+			 GenTrq = VS_Slope25*( GenSpeedF - VS_SySp   )
+		  ENDIF
 
-   ! Saturate the commanded torque using the maximum torque limit:
-      GenTrq  = MIN( GenTrq                    , VS_MaxTq  )   ! Saturate the command using the maximum torque limit
+	   ! Saturate the commanded torque using the maximum torque limit:
+		  GenTrq  = MIN( GenTrq                    , VS_MaxTq  )   ! Saturate the command using the maximum torque limit
 
-	!Initialize saved variables on first call to subroutine
-      IF ( Initialize2 ) THEN 
-		Initialize2 = .FALSE.
-		LastGenTrq = GenTrq                 ! Initialize the value of LastGenTrq on the first pass only
+		!Initialize saved variables on first call to subroutine
+		  IF ( Initialize2 ) THEN 
+			Initialize2 = .FALSE.
+			LastGenTrq = GenTrq                 ! Initialize the value of LastGenTrq on the first pass only
+		  ENDIF
 	  ENDIF
 	  
 	! Saturate the commanded torque using the torque rate limit:  
@@ -913,20 +935,16 @@ YawRateCom = 0.0
 RETURN
 END SUBROUTINE UserYawCont
 !=======================================================================
-SUBROUTINE getControlParameters( HSS_Spd, ZTime, GenSpeedF_out, PC_RefSpd, PC_MinPit, VS_Rgn2K, VS_RtPwr )
+SUBROUTINE updateControlParameters( HSS_Spd, ZTime )
 
 USE								precision
+USE								EAControl 	! contains variables: TimeDRStart, TimeDREnd, DerateFactor, TEmShutdown, maxOverspeed, EmergencyShutdown, GenSpeedF, PC_RefSpd, PC_MinPit, VS_Rgn2_K, and VS_RtPwr. See EAControl module in FAST_Mods.f90 for variable descriptions.
 
 IMPLICIT                        NONE
 
    ! Passed Variables:
 REAL(ReKi), INTENT(IN)       		:: HSS_Spd                     ! Current  HSS (generator) speed, rad/s.
 REAL(ReKi), INTENT(IN )      		:: ZTime                        ! Current simulation time, sec.
-REAL(ReKi), INTENT(OUT)      :: GenSpeedF_out                    ! Filtered HSS (generator) speed, rad/s.
-REAL(ReKi), INTENT(OUT)           	:: PC_RefSpd                    ! Desired (reference) HSS speed for pitch controller, rad/s.
-REAL(ReKi), INTENT(OUT)        	:: PC_MinPit     				! Minimum pitch setting in pitch controller, rad.
-REAL(ReKi), INTENT(OUT)           	:: VS_Rgn2K                   	! Generator torque constant in Region 2 (HSS side), N-m/(rad/s)^2.
-REAL(ReKi), INTENT(OUT)           	:: VS_RtPwr                     ! Rated generator generator power in Region 3, Watts. -- chosen to be 5MW divided by the electrical
 
 	! Local variables storing baseline control parameters (FROM the controller described in the NREL 5MW specifications)
 REAL(ReKi), PARAMETER				:: PC_MinPit_baseline     = 0.0        		! Minimum pitch setting in NREL 5MW baseline pitch controller, rad.
@@ -943,20 +961,16 @@ REAL(ReKi), SAVE                :: LastTime                                     
 REAL(ReKi), PARAMETER           :: CornerFreq    =       1.570796                  ! Corner frequency (-3dB point) in the recursive, single-pole, low-pass filter, rad/s. -- chosen to be 1/4 the blade edgewise natural frequency ( 1/4 of approx. 1Hz = 0.25Hz = 1.570796rad/s)
 
 	!Local variables used for derate calculations
-REAL(ReKi), PARAMETER				:: DR = 0.2								!The magnitude of the derate command (0 to 1)	
-REAL(ReKi), PARAMETER              :: t_DRstart = 60.0 					! Time when the derate command will be issued.
-REAL(ReKi), PARAMETER              :: t_DRend = 120.0 						! Time when the end derate command will be issued. 
 REAL(ReKi), PARAMETER				:: pDR = 0.2							!- poles of the second order derate input filter.
 REAL(ReKi), SAVE                   :: FF_pwrFactor = 1.0 					! The derate factor. A fraction of 1, where 1 is not derated.
 
 LOGICAL, SAVE					:: Initialize = .TRUE.					!Flag used to initialize some saved variables on the first call to this subroutine
-REAL(ReKi), SAVE      :: GenSpeedF                    ! Filtered HSS (generator) speed, rad/s.
 
 
 !=======================================================================
    ! Initialize saved variables on first call to subroutine
 	IF ( Initialize ) THEN
-		WRITE(*,*)  'First call to subroutine getControlParameters(), programmed by '// &
+		WRITE(*,*)  'First call to subroutine updateControlParameters(), programmed by '// &
 					'Eric Anderson. Subroutine can be found in UserSubs.f90 '
 		Initialize = .FALSE.
 		GenSpeedF  = HSS_Spd            ! This will ensure that generator speed filter will use the initial value of the generator speed on the first pass
@@ -975,12 +989,12 @@ REAL(ReKi), SAVE      :: GenSpeedF                    ! Filtered HSS (generator)
 		GenSpeedF = ( 1.0 - Alpha )*HSS_Spd + Alpha*GenSpeedF
 !=======================================================================
 	!Derate Calculations
-	IF (ZTime >= t_DRend) THEN
+	IF (ZTime >= TimeDREnd) THEN
 		!return turbine to normal operation
-		FF_pwrFactor = 1.0 - DR + DR*(1.0 - pDR*(ZTime - t_DRend)*EXP(-pDR*(ZTime - t_DRend)) - EXP(-pDR*(ZTime - t_DRend)))
-	ELSEIF (ZTime >= t_DRstart) THEN
+		FF_pwrFactor = 1.0 - DerateFactor + DerateFactor*(1.0 - pDR*(ZTime - TimeDREnd)*EXP(-pDR*(ZTime - TimeDREnd)) - EXP(-pDR*(ZTime - TimeDREnd)))
+	ELSEIF (ZTime >= TimeDRStart) THEN
 		!Derate turbine
-		FF_pwrFactor = 1.0 - DR*(1.0 - pDR*(ZTime - t_DRstart)*EXP(-pDR*(ZTime - t_DRstart)) - EXP(-pDR*(ZTime - t_DRstart)))
+		FF_pwrFactor = 1.0 - DerateFactor*(1.0 - pDR*(ZTime - TimeDRStart)*EXP(-pDR*(ZTime - TimeDRStart)) - EXP(-pDR*(ZTime - TimeDRStart)))
 	ENDIF
 !=======================================================================
 	! Set pitch control parameters
@@ -988,13 +1002,19 @@ REAL(ReKi), SAVE      :: GenSpeedF                    ! Filtered HSS (generator)
 	PC_MinPit = PC_MinPit_baseline !correct this later
 !=======================================================================
 	! Set torque control parameters	
-	VS_Rgn2K = VS_Rgn2K_baseline/(FF_pwrFactor**2) 	! Region 2 torque constant
+	VS_Rgn2_K = VS_Rgn2K_baseline/(FF_pwrFactor**2) 	! Region 2 torque constant
 	VS_RtPwr = VS_RtPwr_baseline*FF_pwrFactor		! Rated power
-	
-GenSpeedF_out = GenSpeedF
-
+!=======================================================================
+	! Check to see if emergency shutdown should be initiated
+	IF ((ZTime > 30.0) .AND. (EmergencyShutdown == .FALSE.)) THEN ! If simulation has run long enough to pass the initial transient behavior and an emergency shutdown hasn't been requested yet. 
+		IF ( ( ZTime > TEmShutdown ) .OR. ( (100*(HSS_Spd-PC_RefSpd_baseline)/PC_RefSpd_baseline) .GE. maxOverspeed)) THEN ! Should an emergency shutdown be requested now?
+			EmergencyShutdown = .TRUE.
+			WRITE(*,*)  'Emergency shutdown requested at T =',ZTime, ' Overspeed =',(100*(HSS_Spd-PC_RefSpd_baseline)/PC_RefSpd_baseline) 
+		ENDIF
+	ENDIF
+!=======================================================================
 ! Reset the value of LastTime to the current value:
    LastTime = ZTime
 	
 RETURN
-END SUBROUTINE getControlParameters
+END SUBROUTINE updateControlParameters
