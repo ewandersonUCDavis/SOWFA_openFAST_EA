@@ -183,6 +183,8 @@ BlPitchCom_out = PitCom                   ! Pass the most recent blade pitch com
 	WRITE(*,*)  'Time=',ZTime,'pitCount=',pitCount,' modCounterPitch=',&
               modCounterPitch,'HSS_Spd=',HSS_Spd,'PitCom=',PitCom,'PitComP= ',&
               PitComP,'PitComI= ',PitComI,'PitComT= ',PitComT
+              pitCount=pitCount+1
+              modCounterPitch=modCounterPitch+1
 ENDIF
 
 RETURN
@@ -787,6 +789,9 @@ ENDIF
 IF ( controlDebug ) THEN
 	WRITE(*,*)  'Time=',ZTime,'TqCount=',TqCount,' modCounterTorque=',&
               modCounterTorque,'GenTrq=',GenTrq,'HSS_Spd=',HSS_Spd 
+    TqCount = TqCount+1
+    modCounterTorque=modCounterTorque+1
+              
 ENDIF
 
 RETURN
