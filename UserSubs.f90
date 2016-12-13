@@ -99,6 +99,7 @@ REAL(ReKi)                      :: PitRate   (3)                                
 REAL(ReKi)                      :: SpdErr                                          ! Current speed error, rad/s.
 LOGICAL                   	 :: Initialize        = .TRUE.                                 ! A status flag set by the simulation as follows: 0 if this is the first call, 1 for all subsequent time steps, -1 if this is the final call at the end of the simulation.
 INTEGER(ReKi)                   :: K                                               ! Loops through blades.
+INTEGER(ReKi)                   :: pitCount		= 1									!Used for debug output
 
 !=======================================================================
    !Initialize variables:
@@ -178,6 +179,11 @@ ENDIF
 
 BlPitchCom_out = PitCom                   ! Pass the most recent blade pitch command out of the subroutine
  
+ IF controlDebug
+	WRITE(*,*)  'Time=' ZTime 'pitCount=' pitCount ' modCounterPitch=' modCounterPitch // &
+              'HSS_Spd=' HSS_Spd 'PitCom=' PitCom 'PitComP= ' PitComP  // &
+              'PitComI= ' PitComI 'PitComT= ' PitComT
+ENDIF
 
 RETURN
 END SUBROUTINE PitchCntrl
@@ -692,6 +698,7 @@ REAL(ReKi), PARAMETER           :: R2D           =      57.295780               
 LOGICAL, SAVE					:: Initialize1 = .TRUE.					!Flag used to initialize some saved variables on the first call to this subroutine
 LOGICAL, SAVE					:: Initialize2 = .TRUE.					!Flag used to initialize some saved variables on the first call to this subroutine
 
+INTEGER(4),       :: TqCount = 1                                           ! Counter to see how many time subroutine is called
 
 !=======================================================================
    ! Initialize saved variables on first call to subroutine
@@ -776,6 +783,12 @@ ELSE
    ElecPwr = GenTrq*HSS_Spd/GenEff
 ENDIF
    
+
+IF controlDebug
+	WRITE(*,*)  'Time=' ZTime 'TqCount=' TqCount ' modCounterTorque=' modCounterTorque // &
+              'GenTrq=' GenTrq 'HSS_Spd=' HSS_Spd 
+ENDIF
+
 RETURN
 END SUBROUTINE UserVSCont
 !=======================================================================
@@ -1017,5 +1030,6 @@ LOGICAL, SAVE					:: Initialize = .TRUE.					!Flag used to initialize some saved
 ! Reset the value of LastTime to the current value:
    LastTime = ZTime
 	
+    
 RETURN
 END SUBROUTINE updateControlParameters
