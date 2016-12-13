@@ -179,10 +179,10 @@ ENDIF
 
 BlPitchCom_out = PitCom                   ! Pass the most recent blade pitch command out of the subroutine
  
- IF controlDebug
-	WRITE(*,*)  'Time=' ZTime 'pitCount=' pitCount ' modCounterPitch=' modCounterPitch // &
-              'HSS_Spd=' HSS_Spd 'PitCom=' PitCom 'PitComP= ' PitComP  // &
-              'PitComI= ' PitComI 'PitComT= ' PitComT
+ IF ( controlDebug ) THEN
+	WRITE(*,*)  'Time=', ZTime, 'pitCount=', pitCount, ' modCounterPitch=', modCounterPitch, // &
+              'HSS_Spd=', HSS_Spd, 'PitCom=', PitCom, 'PitComP= ', PitComP,  // &
+              'PitComI= ', PitComI, 'PitComT= ', PitComT
 ENDIF
 
 RETURN
@@ -698,7 +698,7 @@ REAL(ReKi), PARAMETER           :: R2D           =      57.295780               
 LOGICAL, SAVE					:: Initialize1 = .TRUE.					!Flag used to initialize some saved variables on the first call to this subroutine
 LOGICAL, SAVE					:: Initialize2 = .TRUE.					!Flag used to initialize some saved variables on the first call to this subroutine
 
-INTEGER(4),       :: TqCount = 1                                           ! Counter to see how many time subroutine is called
+INTEGER(4)       :: TqCount = 1                                           ! Counter to see how many time subroutine is called
 
 !=======================================================================
    ! Initialize saved variables on first call to subroutine
@@ -784,9 +784,9 @@ ELSE
 ENDIF
    
 
-IF controlDebug
-	WRITE(*,*)  'Time=' ZTime 'TqCount=' TqCount ' modCounterTorque=' modCounterTorque // &
-              'GenTrq=' GenTrq 'HSS_Spd=' HSS_Spd 
+IF ( controlDebug ) THEN
+	WRITE(*,*)  'Time=', ZTime, 'TqCount=', TqCount, ' modCounterTorque=', modCounterTorque, // &
+              'GenTrq=', GenTrq, 'HSS_Spd=', HSS_Spd 
 ENDIF
 
 RETURN
