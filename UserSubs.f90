@@ -180,11 +180,10 @@ ENDIF
 BlPitchCom_out = PitCom                   ! Pass the most recent blade pitch command out of the subroutine
  
  IF ( controlDebug ) THEN
-	WRITE(*,*)  'Time=',ZTime,'pitCount=',pitCount,' modCounterPitch=',&
-              modCounterPitch,'HSS_Spd=',HSS_Spd,'PitCom=',PitCom,'PitComP= ',&
+	WRITE(*,*)  'Time=',ZTime,'pitCount=',pitCount,'HSS_Spd=',HSS_Spd,&
+              'GenSpeedF=',GenSpeedF,'PitCom=',PitCom(1),'PitComP= ',&
               PitComP,'PitComI= ',PitComI,'PitComT= ',PitComT
               pitCount=pitCount+1
-              modCounterPitch=modCounterPitch+1
 ENDIF
 
 RETURN
@@ -787,8 +786,8 @@ ENDIF
    
 
 IF ( controlDebug ) THEN
-	WRITE(*,*)  'Time=',ZTime,'TqCount=',TqCount,' modCounterTorque=',&
-              modCounterTorque,'GenTrq=',GenTrq,'HSS_Spd=',HSS_Spd 
+	WRITE(*,*)  'Time=',ZTime,'TqCount=',TqCount,&
+              'GenTrq=',GenTrq,'HSS_Spd=',HSS_Spd,'GenSpeedF=',GenSpeedF
     TqCount = TqCount+1
     modCounterTorque=modCounterTorque+1
               
