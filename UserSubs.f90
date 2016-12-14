@@ -175,16 +175,19 @@ IF ( ( ZTime*OnePlusEps - LastTimePC ) >= PC_DT )  THEN
 
    ! Reset the value of LastTimePC to the current value:
       LastTimePC = ZTime
+      
+    IF ( controlDebug ) THEN
+		WRITE(*,*)  'Time=',ZTime,'pitCount=',pitCount,'HSS_Spd=',HSS_Spd,&
+    	          'GenSpeedF=',GenSpeedF,'PitCom=',PitCom(1),'PitComP= ',&
+        	      PitComP,'PitComI= ',PitComI,'PitComT= ',PitComT
+            	  pitCount=pitCount+1
+ 	ENDIF
+      
 ENDIF
 
 BlPitchCom_out = PitCom                   ! Pass the most recent blade pitch command out of the subroutine
  
- IF ( controlDebug ) THEN
-	WRITE(*,*)  'Time=',ZTime,'pitCount=',pitCount,'HSS_Spd=',HSS_Spd,&
-              'GenSpeedF=',GenSpeedF,'PitCom=',PitCom(1),'PitComP= ',&
-              PitComP,'PitComI= ',PitComI,'PitComT= ',PitComT
-              pitCount=pitCount+1
-ENDIF
+
 
 RETURN
 END SUBROUTINE PitchCntrl
@@ -774,6 +777,12 @@ IF ( ( ZTime*OnePlusEps - LastTimeVS ) >= VS_DT )  THEN
       LastTimeVS = ZTime
       LastGenTrq = GenTrq
 
+	IF ( controlDebug ) THEN
+		WRITE(*,*)  'Time=',ZTime,'TqCount=',TqCount,&
+        	      'GenTrq=',GenTrq,'HSS_Spd=',HSS_Spd,'GenSpeedF=',GenSpeedF
+    	TqCount = TqCount+1              
+	ENDIF
+
 ELSE
 	GenTrq = LastGenTrq
 ENDIF
@@ -785,13 +794,7 @@ ELSE
 ENDIF
    
 
-IF ( controlDebug ) THEN
-	WRITE(*,*)  'Time=',ZTime,'TqCount=',TqCount,&
-              'GenTrq=',GenTrq,'HSS_Spd=',HSS_Spd,'GenSpeedF=',GenSpeedF
-    TqCount = TqCount+1
-    modCounterTorque=modCounterTorque+1
-              
-ENDIF
+
 
 RETURN
 END SUBROUTINE UserVSCont
