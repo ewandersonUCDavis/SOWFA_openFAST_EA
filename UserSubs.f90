@@ -982,7 +982,10 @@ REAL(ReKi), PARAMETER           :: CornerFreq    =       1.570796               
 	!Local variables used for derate calculations
 REAL(ReKi), PARAMETER				:: pDR = 0.2							!- poles of the second order derate input filter.
 REAL(ReKi), SAVE                   :: FF_pwrFactor = 1.0 					! The derate factor. A fraction of 1, where 1 is not derated.
-
+REAL(ReKi), PARAMETER, DIMENSION (17)	:: DRPitchArray = (/ 0.1178, 0.1091, 0.1004, 0.0916, 0.0829, 0.0742, 0.0654, 0.0611, 0.0524, 0.0436, 0.0393, 0.0349, 0.0305, 0.0262, 0.0218, 0.0131, 0.0 /) !Array of minimum pitch values, (radians)
+REAL(ReKi), PARAMETER, DIMENSION (17)	:: DRArray      = (/ 0.5789, 0.6184, 0.6579, 0.6974, 0.7368, 0.7763, 0.8158, 0.8289, 0.8684, 0.9079, 0.9211, 0.9342, 0.9474, 0.9605, 0.9737, 0.9868, 1.0000 /) !Array of derate values corresponding to the minimum pitch array
+INTEGER(4)      						:: interpCounter !This is an index used by the minimum pitch interpolation DO loop.
+  
 LOGICAL, SAVE					:: Initialize = .TRUE.					!Flag used to initialize some saved variables on the first call to this subroutine
 
 
@@ -1020,7 +1023,12 @@ LOGICAL, SAVE					:: Initialize = .TRUE.					!Flag used to initialize some saved
 !=======================================================================
 	! Set pitch control parameters
 	PC_RefSpd = PC_RefSpd_baseline*FF_pwrFactor
-	PC_MinPit = PC_MinPit_baseline !correct this later
+	DO interpCounter = 2, size(DRPitchArray)
+ 		IF ( (FF_pwrFactor .GT. DRArray(interpCounter-1) ) .AND. (FF_pwrFactor .LT. DRArray(interpCounter) )) THEN 
+ 			PC_MinPit = DRPitchArray(interpCounter-1) +  ( DRPitchArray(interpCounter) - DRPitchArray(interpCounter-1) )*( FF_pwrFactor - DRArray(interpCounter-1) )/( DRArray(interpCounter) - DRArray(interpCounter-1) )
+  			WRITE(*,*) 'PowerFactor = ',FF_pwrFactor,'  PC_MinPit =',PC_MinPit
+  		ENDIF
+  	ENDDO
 !=======================================================================
 	! Set torque control parameters	
 	VS_Rgn2_K = VS_Rgn2K_baseline/(FF_pwrFactor**2) 	! Region 2 torque constant
