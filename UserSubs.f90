@@ -99,6 +99,7 @@ REAL(ReKi)                      :: PitRate   (3)                                
 REAL(ReKi)                      :: SpdErr                                          ! Current speed error, rad/s.
 LOGICAL                   	 :: Initialize        = .TRUE.                                 ! A status flag set by the simulation as follows: 0 if this is the first call, 1 for all subsequent time steps, -1 if this is the final call at the end of the simulation.
 INTEGER(ReKi)                   :: K                                               ! Loops through blades.
+INTEGER(ReKi)                   :: pitCount		= 1									!Used for debug output
 
 !=======================================================================
    !Initialize variables:
@@ -174,10 +175,19 @@ IF ( ( ZTime*OnePlusEps - LastTimePC ) >= PC_DT )  THEN
 
    ! Reset the value of LastTimePC to the current value:
       LastTimePC = ZTime
+      
+    IF ( controlDebug ) THEN
+		WRITE(*,*)  'Time=',ZTime,'pitCount=',pitCount,'HSS_Spd=',HSS_Spd,&
+    	          'GenSpeedF=',GenSpeedF,'PitCom=',PitCom(1),'PitComP= ',&
+        	      PitComP,'PitComI= ',PitComI,'PitComT= ',PitComT
+            	  pitCount=pitCount+1
+ 	ENDIF
+      
 ENDIF
 
 BlPitchCom_out = PitCom                   ! Pass the most recent blade pitch command out of the subroutine
  
+
 
 RETURN
 END SUBROUTINE PitchCntrl
@@ -692,6 +702,7 @@ REAL(ReKi), PARAMETER           :: R2D           =      57.295780               
 LOGICAL, SAVE					:: Initialize1 = .TRUE.					!Flag used to initialize some saved variables on the first call to this subroutine
 LOGICAL, SAVE					:: Initialize2 = .TRUE.					!Flag used to initialize some saved variables on the first call to this subroutine
 
+INTEGER(4)       :: TqCount = 1                                           ! Counter to see how many time subroutine is called
 
 !=======================================================================
    ! Initialize saved variables on first call to subroutine
@@ -766,6 +777,12 @@ IF ( ( ZTime*OnePlusEps - LastTimeVS ) >= VS_DT )  THEN
       LastTimeVS = ZTime
       LastGenTrq = GenTrq
 
+	IF ( controlDebug ) THEN
+		WRITE(*,*)  'Time=',ZTime,'TqCount=',TqCount,&
+        	      'GenTrq=',GenTrq,'HSS_Spd=',HSS_Spd,'GenSpeedF=',GenSpeedF
+    	TqCount = TqCount+1              
+	ENDIF
+
 ELSE
 	GenTrq = LastGenTrq
 ENDIF
@@ -776,6 +793,9 @@ ELSE
    ElecPwr = GenTrq*HSS_Spd/GenEff
 ENDIF
    
+
+
+
 RETURN
 END SUBROUTINE UserVSCont
 !=======================================================================
@@ -962,7 +982,10 @@ REAL(ReKi), PARAMETER           :: CornerFreq    =       1.570796               
 	!Local variables used for derate calculations
 REAL(ReKi), PARAMETER				:: pDR = 0.2							!- poles of the second order derate input filter.
 REAL(ReKi), SAVE                   :: FF_pwrFactor = 1.0 					! The derate factor. A fraction of 1, where 1 is not derated.
-
+REAL(ReKi), PARAMETER, DIMENSION (17)	:: DRPitchArray = (/ 0.1178, 0.1091, 0.1004, 0.0916, 0.0829, 0.0742, 0.0654, 0.0611, 0.0524, 0.0436, 0.0393, 0.0349, 0.0305, 0.0262, 0.0218, 0.0131, 0.0 /) !Array of minimum pitch values, (radians)
+REAL(ReKi), PARAMETER, DIMENSION (17)	:: DRArray      = (/ 0.5789, 0.6184, 0.6579, 0.6974, 0.7368, 0.7763, 0.8158, 0.8289, 0.8684, 0.9079, 0.9211, 0.9342, 0.9474, 0.9605, 0.9737, 0.9868, 1.0000 /) !Array of derate values corresponding to the minimum pitch array
+INTEGER(4)      						:: interpCounter !This is an index used by the minimum pitch interpolation DO loop.
+  
 LOGICAL, SAVE					:: Initialize = .TRUE.					!Flag used to initialize some saved variables on the first call to this subroutine
 
 
@@ -1000,7 +1023,12 @@ LOGICAL, SAVE					:: Initialize = .TRUE.					!Flag used to initialize some saved
 !=======================================================================
 	! Set pitch control parameters
 	PC_RefSpd = PC_RefSpd_baseline*FF_pwrFactor
-	PC_MinPit = PC_MinPit_baseline !correct this later
+	DO interpCounter = 2, size(DRPitchArray)
+ 		IF ( (FF_pwrFactor .GT. DRArray(interpCounter-1) ) .AND. (FF_pwrFactor .LT. DRArray(interpCounter) )) THEN 
+ 			PC_MinPit = DRPitchArray(interpCounter-1) +  ( DRPitchArray(interpCounter) - DRPitchArray(interpCounter-1) )*( FF_pwrFactor - DRArray(interpCounter-1) )/( DRArray(interpCounter) - DRArray(interpCounter-1) )
+  			WRITE(*,*) 'PowerFactor = ',FF_pwrFactor,'  PC_MinPit =',PC_MinPit
+  		ENDIF
+  	ENDDO
 !=======================================================================
 	! Set torque control parameters	
 	VS_Rgn2_K = VS_Rgn2K_baseline/(FF_pwrFactor**2) 	! Region 2 torque constant
@@ -1017,5 +1045,6 @@ LOGICAL, SAVE					:: Initialize = .TRUE.					!Flag used to initialize some saved
 ! Reset the value of LastTime to the current value:
    LastTime = ZTime
 	
+    
 RETURN
 END SUBROUTINE updateControlParameters

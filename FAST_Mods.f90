@@ -2369,6 +2369,8 @@ REAL(ReKi)       				:: PC_RefSpd                    				! Desired (reference) H
 REAL(ReKi)       				:: PC_MinPit     								! Minimum pitch setting in pitch controller, rad.
 REAL(ReKi)       				:: VS_Rgn2_K                   					! Generator torque constant in Region 2 (HSS side), N-m/(rad/s)^2.
 REAL(ReKi)         				:: VS_RtPwr                     				! Rated generator generator power in Region 3, Watts. -- chosen to be 5MW divided by the electrical
-
+LOGICAL                      :: controlDebug                                        ! Flag to turn on debug output for controller
+INTEGER(4)                   :: modCounterPitch = 1                                          ! Counter to see how often module data is accessed.
+INTEGER(4)                   :: modCounterTorque = 1                                          ! Counter to see how often module data is accessed.
 
 END MODULE EAControl

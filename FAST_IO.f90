@@ -7017,6 +7017,11 @@ CALL ReadRVar ( UnIn, PriFile, TEmShutdown, 'TEmShutdown', 'Time to initiate eme
    ! maxOverspeed - The maximum safe overspeed (%).
    
 CALL ReadRVar ( UnIn, PriFile, maxOverspeed, 'maxGenOS', 'The maximum safe overspeed (%).' ) 
+
+   ! controlDebug - Flag to turn on debug output for controller.
+   
+CALL ReadLVar ( UnIn, PriFile, controlDebug, 'controlDebug', 'Flag to turn on debug output for controller' ) 
+
 !  -------------- OUTPUT PARAMETERS --------------------------------------------
 
 
