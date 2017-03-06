@@ -15,12 +15,15 @@ USE                             FAST2ADAMSSubs     ! MakeAdm(), MakeACF(), MakeA
 USE                             FAST_Lin_Subs      ! CalcSteady(), Linearize()
 USE                             HydroDyn
 USE                             Noise
+USE								EAControl			!Used to pass the turbine number to controllers written by Eric Anderson in UserSubs.f90
 
 IMPLICIT                        NONE
 
 ! argument
 REAL(ReKi) tstep
 Integer turbnum
+
+turbineNumber = turbnum  !Tells module EAControl which turbine this is. This is used by user written user written controllers to use different control schemes for two multiple turbines.
 
 CALL DATE_AND_TIME ( Values=StrtTime )   ! Let's time the whole simulation
 

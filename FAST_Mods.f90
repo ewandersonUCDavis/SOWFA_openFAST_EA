@@ -2355,6 +2355,9 @@ MODULE EAControl
    
 USE                             Precision
 
+! parameter indicating which turbine this is
+Integer(4) turbineNumber 
+
 ! Parameters read in from input file primary.fst    
 REAL(ReKi)                   	:: TimeDRStart                                  ! Time for turbine to initiate derating
 REAL(ReKi)                   	:: TimeDREnd                                   	! Time for turbine to start returning to full rated operation

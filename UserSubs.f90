@@ -107,7 +107,8 @@ INTEGER(ReKi)                   :: pitCount		= 1									!Used for debug output
    
 IF ( Initialize ) THEN  ! .TRUE. if we're on the first call to the subroutine
    WRITE(*,*)  'Running with pitch control programmed by Eric Anderson '// &
-              'in subroutine PitchCntrl(), which can be found in UserSubs.f90 '
+              'in subroutine PitchCntrl(), which can be found in UserSubs.f90. ' // &
+              'This is Turbine#',turbineNumber 
 	Initialize = .FALSE.
    ! Initialize the SAVEd variables:
    PitCom     = BlPitch                         ! This will ensure that the variable speed controller picks the correct control region and the pitch controller pickes the correct gain on the first call. If pitchCtrl()is called before UsrVSCtrl() initializing it here will work, if not I need to do something else.
@@ -995,7 +996,7 @@ LOGICAL, SAVE					:: Initialize = .TRUE.					!Flag used to initialize some saved
    ! Initialize saved variables on first call to subroutine
 	IF ( Initialize ) THEN
 		WRITE(*,*)  'First call to subroutine updateControlParameters(), programmed by '// &
-					'Eric Anderson. Subroutine can be found in UserSubs.f90 '
+					'Eric Anderson. Subroutine can be found in UserSubs.f90 ' 
 		Initialize = .FALSE.
 		GenSpeedF  = HSS_Spd            ! This will ensure that generator speed filter will use the initial value of the generator speed on the first pass
 		LastTime   = ZTime               ! This will ensure that generator speed filter will use the initial value of the generator speed on the first pass
